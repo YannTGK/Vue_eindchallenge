@@ -3,8 +3,8 @@
   <div class="header">
     <img src="/images/logo.png" alt="Dyangoo Logo" class="logo">
     <div class="header-buttons">
-      <button class="login-btn">Login</button>
-      <button class="cart-btn">Shopping Cart ({{ quantity }})</button>
+      <button class="login-btn" @click="redirectToLogin">Login</button>
+      <button class="cart-btn" @click="goCart">Shopping Cart</button>
     </div>
   </div>
 
@@ -21,7 +21,7 @@
       <p class="product-description">
         Everybody knows that the best way to make a statement is with a pair of Dyangoo boots.
         <br><br>
-        We are know for the most Customizable boots in the market. Click on a part of the boot and edit the color.
+        We are known for the most customizable boots in the market. Click on a part of the boot and edit the color.
       </p>
 
       <div class="colorButtons">
@@ -37,10 +37,14 @@
       </p>
 
       <div class="fabricButtons">
-        <button @click="changeFabric('fabric1')">Standaard</button>
-        <button @click="changeFabric('fabric2')">Rubber</button>
-        <button @click="changeFabric('fabric3')">Wool</button>
+        <button @click="changeFabric('standaard')">Standaard</button>
+        <button @click="changeFabric('rubber')">Rubber</button>
+        <button @click="changeFabric('wool')">Wool</button>
       </div>
+
+      <p class="product-description">
+        Want to match with your friends? Order more than one pair!
+      </p>
 
       <div class="quantity-selector">
         <label for="quantity">Quantity:</label>
@@ -49,32 +53,40 @@
         <button @click="quantity = Math.min(10, quantity + 1)">+</button>
       </div>
 
-      <p class="price">$149.99</p>
+      <h3 class="price">{{price}} x {{ quantity }} = <p>{{price * quantity }}</p></h3>
 
-      <div class="reviews">
-        <span>★★★★★</span> <span>(50 Reviews)</span>
-      </div>
-
-      <button class="buy-now-button">Add to Cart</button>
-
-      <div class="cart">
-        <p>Items in Cart: {{ quantity }}</p>
-        <button class="view-cart">View Cart</button>
-      </div>
+      <button class="buy-now-button" @click="submitOrder">Add to Cart</button>
 
       <div class="shipping-info">
         <p>Free shipping on all orders over $100!</p>
+      </div>
+      <div class="reviews">
+        <span>★★★★★</span> <span>(50 Reviews)</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-// Import functions from the Three.js configurator
-import { initializeCanvas, updateShoeColor, updateShoeFabric } from '../three-configurator';
+import { ref, onMounted, inject } from 'vue';
+import { initializeCanvas, updateShoeColor, updateShoeFabric } from '../configurator/three-configurator';
+import axios from 'axios';
+
+const price = 149.99;
+const quantity = ref(1);
 
 // Color setup
+const shoeColors = ref({
+  laces: '#ffffff',
+  inside: '#ff0000',
+  outside_1: '#000000',
+  outside_2: '#ff0000',
+  outside_3: '#ff0000',
+  sole_top: '#888888',
+  sole_bottom: '#000000',
+});
+
+// The selected color to update the shoe
 const currentColor = ref('none');
 const colors = {
   red: '#ff4b5c',
@@ -85,35 +97,103 @@ const colors = {
   pink: '#ec4899',
   teal: '#14b8a6',
   gray: '#888888',
-  Black: '#000000',
+  black: '#000000',
 };
 
 // Fabric setup
-const currentFabric = ref('fabric1');
+const currentFabric = ref('standaard');
 const fabrics = {
-  fabric1: '/textures/normal_t_white.jpg',
-  fabric2: '/textures/soft.png',
-  fabric3: '/textures/cuchon.png',
+  standaard: '/textures/normal_t_white.jpg',
+  rubber: '/textures/soft.png',
+  wool: '/textures/cuchon.png',
 };
 
-// Quantity setup
-const quantity = ref(1);
-
 function changeColor(color) {
-  currentColor.value = color;
-  updateShoeColor(color);  // Update shoe color
+  updateShoeColor(color);  // Update shoe color in Three.js
 }
 
+//go to cart page
+function goCart(){
+  window.location.href = '/cart';
+}
+
+// Fabric change handler
 function changeFabric(fabric) {
   currentFabric.value = fabric;
-  updateShoeFabric(fabrics[fabric]);  // Update shoe fabric texture
+  updateShoeFabric(fabrics[fabric]);  // Update shoe fabric in Three.js
+  
+  // Log the fabric update (if needed)
+  console.log('Updated fabric:', fabric);
 }
 
+// Mount Three.js canvas
 onMounted(() => {
   const canvas = document.querySelector('#threeCanvas');
   initializeCanvas(canvas); // Initialize the 3D scene
+
+  // Listen for the colors from Three.js
+  window.updateColorsFromThree = (colors) => {
+    shoeColors.value = colors;
+    //console.log('Updated shoe colors from Three.js:', shoeColors.value);
+  };
+
+  // Inject and set up WebSocket
+  const socket = inject('$socket');
+
+  // Listen for real-time updates (e.g., new offers)
+  socket.on('newOffer', (offer) => {
+    console.log('New offer received:', offer);
+    // Display the new offer (optional: update UI with offer details)
+  });
+
+  // Listen for cart updates (if applicable)
+  socket.on('cartUpdated', (updatedCart) => {
+    console.log('Cart updated:', updatedCart);
+    // Update cart UI with the updated cart
+  });
 });
+
+// Submit order handler
+async function submitOrder() {
+  try {
+    const order = {
+      productId: 'dyangoo-boots',
+      color: {
+        inside: shoeColors.value.inside || '#ffffff',
+        laces: shoeColors.value.laces || '#000000',
+        outside_1: shoeColors.value.outside_1 || '#888888',
+        outside_2: shoeColors.value.outside_2 || '#888888',
+        outside_3: shoeColors.value.outside_3 || '#888888',
+        sole_top: shoeColors.value.sole_top || '#000000',
+        sole_bottom: shoeColors.value.sole_bottom || '#000000',
+      },
+      fabric: currentFabric.value,
+      quantity: quantity.value,
+      totalPrice: price * quantity.value,  // Make sure price is defined somewhere
+      customerName: 'Yann Tagakou', // Replace with actual input
+      customerEmail: 'Yan@thomasmore.be', // Replace with actual input
+      shippingAddress: 'Leuvense steenweg 206, 3000 Leuven', // Replace with actual input
+      send: 'new',
+    };
+
+    const response = await axios.post('http://localhost:5001/api/orders', order);
+    console.log('Order created:', response.data);
+
+    // Emit cart update event after order is placed (for real-time sync)
+    const socket = inject('$socket');
+    socket.emit('cartUpdated', { action: 'add', updatedCart: response.data });
+
+  } catch (error) {
+    console.error('Error submitting order:', error); // Log error details for better debugging
+    alert('Failed to submit order. Please try again.');
+  }
+}
+
+function redirectToLogin() {
+  window.location.href = '/login'; // Replace with your login page route
+}
 </script>
+
 
 <style scoped>
 * {
@@ -154,7 +234,7 @@ onMounted(() => {
 }
 
 .header-buttons button:hover {
-  background-color: #0056b3; /* Darker shade on hover */
+  background: #E42528; /* Darker shade on hover */
 }
 
 .three-container {
@@ -173,8 +253,8 @@ onMounted(() => {
 }
 
 .product-description {
-  font-size: 24px;
-  text-align: center;
+  font-size: 16px;
+  text-align: left;
 }
 
 .right-panel {
@@ -211,6 +291,12 @@ onMounted(() => {
   background-color: #007bff;
 }
 
+.price {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
 button {
   padding: 18px 40px;
   font-size: 16px;
@@ -232,7 +318,7 @@ button {
 .quantity-btn {
   padding: 5px 10px; /* Smaller padding */
   font-size: 14px; /* Smaller font size */
-  background-color: #007bff; /* Change background color if needed */
+  background: #E42528; /* Darker shade on hover */
   color: white;
   border: none;
   border-radius: 50%;
@@ -241,7 +327,7 @@ button {
 }
 
 .quantity-btn:hover {
-  background-color: #0056b3; /* Darker shade on hover */
+  background: #E42528; /* Darker shade on hover */
 }
 
 .quantity-selector span {
